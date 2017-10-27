@@ -25,25 +25,29 @@ namespace ns
 		string ast_type;
 		json body;
 		string name;
-
 	};
 
 	//Assign
 	struct assign {
 		string ast_type;
-		//json targets;
 		vector<json> targets;
 		json value;
+	};
+
+	struct _assign {
+		string ast_type;
+		string targets;
+		string value;
 	};
 
 	// Inner nodes:
 	//Call
 	struct call {
+		json args;
 		string ast_type;
-		int col_offset;
-		//func[]
-		//keywords[]
-		int lineno;
+		json func;
+		//keywords
+		//lineno
 	};
 
 	//Name
@@ -53,9 +57,20 @@ namespace ns
 		string id;
 	};
 
-	struct value {};
+	//func
+	struct func {
+		string ast_type;
+		string id;
+	};
 
-	struct targets {};
+	struct num {
+		string ast_type;
+		json n;
+	};
+
+	//assign inner nodes:
+	struct assign_value {};
+	struct assign_targets {};
 
 	// (might be useless)
 	struct module {
@@ -63,15 +78,13 @@ namespace ns
 		functiondef f;
 		assign a;
 	};
-
-	//void from json
 }
 
 
 int main()
 {
 	cout << "rapid json test ";
-	ifstream infile("./file1.json");
+	ifstream infile("./file2.json");
 	if (!infile)
 	{
 		cout << "File not found!\n";
@@ -84,54 +97,91 @@ int main()
 	// range-based for
 	for (auto& element : j) {
 		if (element.is_array()) {
-			//cout << setw(4) << element << endl;
 			for (size_t i = 0; i < element.size(); i++)
 			{
 				cout << "\n***ELEMENT: " << i << endl;
-				//cout << element.at(i) << endl;
 				for (json::iterator it = element.at(i).begin(); it != element.at(i).end(); ++it)
 				{
 					if (it.key() == "ast_type")
 					{
-						//cout << it.value() << endl;
 						// Parse Assign node
 						if (it.value() == "Assign")
 						{
-							//cout << "found assign" << endl;
+							ns::_assign _a;
+
 							ns::assign a{
 								element.at(i)["ast_type"].get<string>(),
 								element.at(i)["targets"].get<vector<json>>(),
-								//element.at(i)["targets"].get<json>()
 								element.at(i)["value"].get<json>()
 							};
 
-							cout << "ast_type: " << a.ast_type << endl;
-							cout << "targets: " << a.targets << endl;
-							cout << "value: " << a.value << endl;
+							_a.ast_type = a.ast_type; // save type
 
+							//parse target (left hand side of assignment)
+							//targets is an array; traverse array:
 							for (size_t i = 0; i < a.targets.size(); i++)
 							{
 								json t = a.targets.at(i);
+								//iterate over json objects
 								for (json::iterator it = t.begin(); it != t.end(); it++)
 								{
-									if (it.key() == "ast_type")
+									if (it.key() == "ast_type" && it.value() == "Name")
 									{
-										if (it.value() == "Name")
+										ns::name n{
+											a.targets.at(i)["ast_type"].get<string>(),
+											a.targets.at(i)["ctx"].get<json>(),
+											a.targets.at(i)["id"].get<string>()
+										};
+										_a.targets = n.id; // save target
+									}
+								}
+							}
+
+							//parse value (right hand side of assignment)
+							json v = a.value; //value is not an array; iterate right away
+							for (json::iterator it = v.begin(); it != v.end(); it ++)
+							{
+								if (it.key() == "ast_type" && it.value() == "Call")
+								{
+									//parse call
+									ns::call c{
+										v["args"].get<json>(),
+										v["ast_type"].get<string>(),	
+										v["func"].get<json>()
+									};
+									
+									//parse inner call's func
+									json f = c.func;
+									for (json::iterator it = f.begin(); it != f.end(); it++)
+									{
+										if (it.key() == "ast_type" && it.value() == "Name")
 										{
-											ns::name n{
-												a.targets.at(i)["ast_type"].get<string>(),
-												a.targets.at(i)["ctx"].get<json>(),
-												a.targets.at(i)["id"].get<string>()
+											ns::func fun{
+												f["ast_type"].get<string>(),
+												f["id"].get<string>()
 											};
 
-											cout << "ast_type: " << n.ast_type << endl;
-											cout << "ctx: " << n.ctx << endl;
-											cout << "id: " << n.id << endl;
+											_a.value = fun.id + c.args.dump(); // save value
 										}
 									}
 								}
+								else if (it.key() == "ast_type" && it.value() == "Num")
+								{
+									// do recursive inner calls to Assign
+									// in order to test this part of the code
 
+									//parse num
+									ns::num n{
+										v["ast_type"].get<string>(),
+										v["n"].get<json>()
+									};
+									cout << "CAUGHT A NUM" << endl;
+								}
 							}
+
+							cout << _a.ast_type << ":" << endl;
+							cout << _a.targets << " = " << _a.value << endl;
+							// push loaded _a to a vector or whatever datastructure
 						}
 						else if (it.value() == "Expr")
 						{
@@ -167,7 +217,6 @@ int main()
 		}
 
 	}
-
 	system("PAUSE");
 	return 0;
 }
