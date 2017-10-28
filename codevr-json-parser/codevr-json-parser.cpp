@@ -90,23 +90,41 @@ namespace ns
 // helper method to parse name:
 //ns::name parseName(){}
 
+// helper method to output AssignNode:
+void outputAssign(ns::_assign a)
+{
+	//string ast_type;
+	string targets = a.targets;
+	string value = a.value;
+	cout << a.targets << " = " << a.value << endl;
+}
+
 // helper method to output calls:
-void outputCall(ns::_call _c) {
-	cout << _c.id;
+string formatCall(ns::_call _c){
+	string ca = _c.id;
+	//cout << _c.id;
 	if (_c.args.size() != 0)
 	{
-		cout << "(";
+		//cout << "(";
+		ca += "(";
 		for (size_t i = 0; i < _c.args.size(); i++)
 		{
 			if (i != _c.args.size() - 1)
-				cout << _c.args.at(i) << ",";
+				//cout << _c.args.at(i) << ",";
+				ca += _c.args.at(i) + ",";
 			else
-				cout << _c.args.at(i);
+				//cout << _c.args.at(i);
+				ca += _c.args.at(i);
+
 		}
-		cout << ")" << endl;
+		//cout << ")" << endl;
+		ca += ")";
 	}
 	else
-		cout << "()" << endl;
+		//cout << "()" << endl;
+		ca += "()";
+
+	return ca;
 }
 
 // helper method to parse a Call node:
@@ -215,6 +233,59 @@ ns::_expression parseExpr(json element, size_t i)
 	return _e;
 }
 
+ns::_assign parseAssign(json element, size_t i)
+{
+	ns::_assign _a;
+	ns::assign a{
+		element.at(i)["ast_type"].get<string>(),
+		element.at(i)["targets"].get<vector<json>>(),
+		element.at(i)["value"].get<json>()
+	};
+
+	_a.ast_type = a.ast_type;
+	//parse target (left hand side of assignment)
+	//targets is an array; traverse array:
+	for (size_t i = 0; i < a.targets.size(); i++)
+	{
+		json t = a.targets.at(i);
+		//iterate over json objects
+		for (json::iterator it = t.begin(); it != t.end(); it++)
+		{
+			if (it.key() == "ast_type" && it.value() == "Name")
+			{
+				//save target
+				_a.targets = a.targets.at(i)["id"].get<string>();
+			}
+		}
+	}
+	//parse value (right hand side of assignment)
+	json v = a.value; //value is not an array; iterate right away
+	for (json::iterator it = v.begin(); it != v.end(); it++)
+	{
+		if (it.key() == "ast_type" && it.value() == "Call")
+		{
+			ns::_call _c;
+			_c = parseCall(it, v);
+			//cout << formatCall(_c) << endl;
+			_a.value = formatCall(_c);
+		}
+		else if (it.key() == "ast_type" && it.value() == "Num")
+		{
+			//parse num
+			json num = v["n"].get<json>();
+			ns::number n{
+				num["ast_type"].get<string>(),
+				to_string(num["n"].get<int>())
+			};
+			// save value
+			_a.value = n.val;
+		}
+		//else if(it.key() == "ast_type" && it.value() == "BinOp"){}
+	}
+
+	return _a;
+}
+
 int main()
 {
 	cout << "rapid json test ";
@@ -238,73 +309,19 @@ int main()
 				{
 					if (it.key() == "ast_type")
 					{
-						// Parse Assign node
-						if (it.value() == "Assign")
+						if (it.value() == "Assign") // done!
 						{
-							ns::_assign _a;
-							ns::assign a{
-								element.at(i)["ast_type"].get<string>(),
-								element.at(i)["targets"].get<vector<json>>(),
-								element.at(i)["value"].get<json>()
-							};
-
-							_a.ast_type = a.ast_type; // save type
-
-							//parse target (left hand side of assignment)
-							//targets is an array; traverse array:
-							for (size_t i = 0; i < a.targets.size(); i++)
-							{
-								json t = a.targets.at(i);
-								//iterate over json objects
-								for (json::iterator it = t.begin(); it != t.end(); it++)
-								{
-									if (it.key() == "ast_type" && it.value() == "Name")
-									{
-										ns::name n{
-											a.targets.at(i)["ast_type"].get<string>(),
-											a.targets.at(i)["ctx"].get<json>(),
-											a.targets.at(i)["id"].get<string>()
-										};
-										_a.targets = n.id; // save target
-									}
-								}
-							}
-
-							//parse value (right hand side of assignment)
-							json v = a.value; //value is not an array; iterate right away
-							for (json::iterator it = v.begin(); it != v.end(); it ++)
-							{
-								if (it.key() == "ast_type" && it.value() == "Call")
-								{
-									ns::_call _c;
-									_c = parseCall(it, v);
-									outputCall(_c);
-								}
-								else if (it.key() == "ast_type" && it.value() == "Num")
-								{
-									// do recursive inner calls to parseAssign
-									// in order to test this part of the code
-
-									//parse num
-									/*ns::num n{
-										v["ast_type"].get<string>(),
-										v["n"].get<json>()
-									};
-									cout << "CAUGHT A NUM" << endl;*/
-								}
-							}
-
-							//cout << _a.ast_type << ":" << endl;
-							//cout << _a.targets << " = " << _a.value << endl;
-							// push loaded _a to a vector or whatever datastructure
+							ns::_assign _a = parseAssign(element, i);
+							outputAssign(_a);
 						}
 						else if (it.value() == "Expr") // done!
 						{
 							ns::_expression _e = parseExpr(element, i);
-							outputCall(_e.call);
+							cout << formatCall(_e.call) << endl;
 						}
 						else if (it.value() == "FunctionDef")
 						{
+							//encompasses both Expr and Assignment
 							ns::functiondef f
 							{
 								element.at(i)["args"].get<json>(),
