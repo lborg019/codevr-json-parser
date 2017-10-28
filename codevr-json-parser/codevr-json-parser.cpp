@@ -12,19 +12,29 @@ using namespace std;
 
 namespace ns
 {
-	// Outtermost nodes:
-	//Expr
-	struct expression {
-		string ast_type;
-		json value;
-	};
-
-	//FunctionDef
-	struct functiondef {
+	// (useless)
+	/*struct call {
 		json args;
 		string ast_type;
-		json body;
-		string name;
+		json func;
+	};*/
+
+	struct _call {
+		string id;
+		vector<string> args;
+	};
+
+	// Outtermost nodes:
+	//Expr (useless)
+	/*struct expression {
+		string ast_type;
+		json value;
+	};*/
+
+	struct _expression
+	{
+		string ast_type;
+		_call call;
 	};
 
 	//Assign
@@ -40,15 +50,15 @@ namespace ns
 		string value;
 	};
 
-	// Inner nodes:
-	//Call
-	struct call {
+	//FunctionDef
+	struct functiondef {
 		json args;
 		string ast_type;
-		json func;
-		//keywords
-		//lineno
+		json body;
+		string name;
 	};
+
+	// Inner nodes:
 
 	//Name
 	struct name {
@@ -57,34 +67,158 @@ namespace ns
 		string id;
 	};
 
+	struct _name {
+		string name;
+	};
+
 	//func
 	struct func {
 		string ast_type;
 		string id;
 	};
 
-	struct num {
-		string ast_type;
-		json n;
+	struct number {
+		string ast_type; //int, double, float
+		string val; //3, 3.1, 3.14159
 	};
 
 	//assign inner nodes:
 	struct assign_value {};
 	struct assign_targets {};
-
-	// (might be useless)
-	struct module {
-		expression e;
-		functiondef f;
-		assign a;
-	};
 }
 
+// helper method to parse name:
+//ns::name parseName(){}
+
+// helper method to output calls:
+void outputCall(ns::_call _c) {
+	cout << _c.id;
+	if (_c.args.size() != 0)
+	{
+		cout << "(";
+		for (size_t i = 0; i < _c.args.size(); i++)
+		{
+			if (i != _c.args.size() - 1)
+				cout << _c.args.at(i) << ",";
+			else
+				cout << _c.args.at(i);
+		}
+		cout << ")" << endl;
+	}
+	else
+		cout << "()" << endl;
+}
+
+// helper method to parse a Call node:
+ns::_call parseCall(json::iterator it, json v)
+{
+	ns::_call _c;
+	ns::call c{
+		v["args"].get<json>(),
+		v["ast_type"].get<string>(),
+		v["func"].get<json>()
+	};
+
+	// arguments must be a vector of strings:
+	// print("hello")                       string
+	// print(sayHello())                    call
+	// print("myRelation(%d, %d)" % (p,q))  BinOp[str + op(right(tuple, elts(load(p), load(q))))]
+
+	//[Call] parse args;
+	json a_array = c.args;
+	vector<string> argStr = vector<string>();
+	if (a_array.size() != 0)
+	{
+		for (size_t i = 0; i < a_array.size(); i++)
+		{
+			json a = a_array.at(i);
+			for (json::iterator it = a.begin(); it != a.end(); it++)
+			{
+				if (it.key() == "ast_type" && it.value() == "Name")
+				{
+					// usually 'Loads'
+					argStr.push_back(a["id"].get<string>());
+				}
+				else if (it.key() == "ast_type" && it.value() == "Num")
+				{
+					json num = a["n"].get<json>();
+					ns::number n{
+						num["ast_type"].get<string>(),
+						to_string(num["n"].get<int>())
+					};
+					//cout << n.ast_type << " : " << n.val << endl;
+					argStr.push_back(n.val);
+				}
+				else if (it.key() == "ast_type" && it.value() == "Str")
+				{
+					argStr.push_back(a["s"].get<string>());
+				}
+				else if (it.key() == "ast_type" && it.value() == "Tuple")
+					cout << "found a tuple" << endl; //parse Tuple [implement]
+				else if (it.key() == "ast_type" && it.value() == "BinOp")
+					cout << "found a BinOp" << endl; //parse BinOp [implement]
+			}
+		}
+	}
+	_c.args = argStr; //save list of arguments
+
+	//[Call] parse func for id and attribute;
+	json f = c.func;
+	for (json::iterator it = f.begin(); it != f.end(); it++)
+	{
+		if (it.key() == "ast_type" && it.value() == "Attribute")
+		{
+			/*
+			"func": {
+				"ast_type": "Attribute",
+				"attr": "add",
+				(...)
+				"value": {
+					"ast_type": "Name"
+					(...)
+					"id": "orderedPairsSet"
+				}
+			}
+			*/
+			//parse value
+			//concatenate attribute with id
+		}
+		else if (it.key() == "ast_type" && it.value() == "Name")
+		{
+			_c.id = f["id"].get<string>();
+		}
+	}
+
+	/* Abstract call into:
+		callID + callAttribute
+		callArguments
+	*/
+
+	return _c;
+}
+
+// helper method to parse expressions:
+ns::_expression parseExpr(json element, size_t i)
+{
+	ns::_expression _e;
+	_e.ast_type = element.at(i)["ast_type"].get<string>();
+
+	json v = element.at(i)["value"].get<json>();
+	for (json::iterator it = v.begin(); it != v.end(); it++)
+	{
+		if (it.key() == "ast_type" && it.value() == "Call")
+		{
+			ns::_call _c = parseCall(it, v);
+			_e.call = _c;
+		}
+	}
+	return _e;
+}
 
 int main()
 {
 	cout << "rapid json test ";
-	ifstream infile("./file2.json");
+	ifstream infile("./file1.json");
 	if (!infile)
 	{
 		cout << "File not found!\n";
@@ -108,7 +242,6 @@ int main()
 						if (it.value() == "Assign")
 						{
 							ns::_assign _a;
-
 							ns::assign a{
 								element.at(i)["ast_type"].get<string>(),
 								element.at(i)["targets"].get<vector<json>>(),
@@ -143,57 +276,32 @@ int main()
 							{
 								if (it.key() == "ast_type" && it.value() == "Call")
 								{
-									//parse call
-									ns::call c{
-										v["args"].get<json>(),
-										v["ast_type"].get<string>(),	
-										v["func"].get<json>()
-									};
-									
-									//parse inner call's func
-									json f = c.func;
-									for (json::iterator it = f.begin(); it != f.end(); it++)
-									{
-										if (it.key() == "ast_type" && it.value() == "Name")
-										{
-											ns::func fun{
-												f["ast_type"].get<string>(),
-												f["id"].get<string>()
-											};
-
-											_a.value = fun.id + c.args.dump(); // save value
-										}
-									}
+									ns::_call _c;
+									_c = parseCall(it, v);
+									outputCall(_c);
 								}
 								else if (it.key() == "ast_type" && it.value() == "Num")
 								{
-									// do recursive inner calls to Assign
+									// do recursive inner calls to parseAssign
 									// in order to test this part of the code
 
 									//parse num
-									ns::num n{
+									/*ns::num n{
 										v["ast_type"].get<string>(),
 										v["n"].get<json>()
 									};
-									cout << "CAUGHT A NUM" << endl;
+									cout << "CAUGHT A NUM" << endl;*/
 								}
 							}
 
-							cout << _a.ast_type << ":" << endl;
-							cout << _a.targets << " = " << _a.value << endl;
+							//cout << _a.ast_type << ":" << endl;
+							//cout << _a.targets << " = " << _a.value << endl;
 							// push loaded _a to a vector or whatever datastructure
 						}
-						else if (it.value() == "Expr")
+						else if (it.value() == "Expr") // done!
 						{
-							ns::expression e
-							{
-								element.at(i)["ast_type"].get<string>(),
-								element.at(i)["value"].get<json>()
-							};
-
-							cout << "ast_type: " << e.ast_type << endl;
-							cout << "value: " << e.value << endl;
-
+							ns::_expression _e = parseExpr(element, i);
+							outputCall(_e.call);
 						}
 						else if (it.value() == "FunctionDef")
 						{
