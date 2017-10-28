@@ -12,12 +12,12 @@ using namespace std;
 
 namespace ns
 {
-	// (useless)
-	/*struct call {
+	// clean it eventually
+	struct call {
 		json args;
 		string ast_type;
 		json func;
-	};*/
+	};
 
 	struct _call {
 		string id;
