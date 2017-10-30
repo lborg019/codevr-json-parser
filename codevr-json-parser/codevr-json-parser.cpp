@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stack>
 #include <string>
+#include <memory>
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -24,19 +25,6 @@ namespace ns
 		vector<string> args;
 	};
 
-	// Outtermost nodes:
-	//Expr (useless)
-	/*struct expression {
-		string ast_type;
-		json value;
-	};*/
-
-	struct _expression
-	{
-		string ast_type;
-		_call call;
-	};
-
 	//Assign
 	struct assign {
 		string ast_type;
@@ -45,30 +33,29 @@ namespace ns
 	};
 
 	struct _assign {
+		/*_assign(string a, string t, string v) {
+			ast_type = a;
+			targets = t;
+			value = v;
+		}*/
 		string ast_type;
 		string targets;
 		string value;
 	};
 
-	//FunctionDef
-	struct functiondef {
-		json args;
+	struct _expression {
 		string ast_type;
-		json body;
-		string name;
+		_call call;
 	};
 
-	// Inner nodes:
-
-	//Name
-	struct name {
+	struct _functiondef {
 		string ast_type;
-		json ctx;
-		string id;
-	};
-
-	struct _name {
 		string name;
+		string args;
+		//use the FVariant instead of two vectors
+		vector<_expression> e;
+		vector<_assign> a;
+		string returnType;
 	};
 
 	//func
@@ -86,9 +73,6 @@ namespace ns
 	struct assign_value {};
 	struct assign_targets {};
 }
-
-// helper method to parse name:
-//ns::name parseName(){}
 
 // helper method to output AssignNode:
 void outputAssign(ns::_assign a)
@@ -233,6 +217,7 @@ ns::_expression parseExpr(json element, size_t i)
 	return _e;
 }
 
+// helper method to parse assignments:
 ns::_assign parseAssign(json element, size_t i)
 {
 	ns::_assign _a;
@@ -286,10 +271,93 @@ ns::_assign parseAssign(json element, size_t i)
 	return _a;
 }
 
+// helper method to parse functiondefinitions:
+ns::_functiondef parseFunctionDef(json element, size_t i)
+{
+	ns::_functiondef _f;
+	//save ast
+	_f.ast_type = element.at(i)["ast_type"].get<string>();
+	//cout << "ast_type: " << _f.ast_type << endl;
+
+	// save function name
+	_f.name = element.at(i)["name"].get<string>();
+	//cout << "name: " << _f.name << endl;
+
+	// save function args
+	json a_array_outter = element.at(i)["args"].get<json>();
+	json a_array_inner = a_array_outter["args"].get<json>();
+	vector<string> argStr = vector<string>();
+	if (a_array_inner.size() != 0)
+	{
+		for (size_t i = 0; i < a_array_inner.size(); i++)
+		{
+			json a = a_array_inner.at(i);
+			argStr.push_back(a["arg"].get<string>());
+		}
+	}
+	_f.args = "";
+	if (argStr.size() == 1)
+	{
+		_f.args += argStr.at(0);
+	}
+	else
+	{
+		for (size_t i = 0; i < argStr.size(); i++)
+		{
+			if (i == argStr.size() - 1)
+			{
+				_f.args += argStr.at(i);
+			}
+			else
+				_f.args += argStr.at(i) + ",";
+
+		}
+	}
+
+	// save body:
+	json b = element.at(i)["body"].get<json>();
+	//for (json::iterator it = b.begin(); it != b.end(); it++)
+	if (b.size() != 0)
+	{
+		for (size_t i = 0; i < b.size(); i++)
+		{
+			json body = b.at(i);
+			string inner_ast = body["ast_type"].get<string>();
+			if (inner_ast == "Expr")
+			{
+				ns::_expression e = parseExpr(b, i);
+				_f.e.push_back(e);
+			}
+			else if (inner_ast == "Assign")
+			{
+				ns::_assign a = parseAssign(b, i);
+				_f.a.push_back(a);
+			}
+			else if (inner_ast == "If")
+			{
+				//parse if
+			}
+
+		}
+	}
+
+	return _f;
+}
+
+// helper method to output functionDef node:
+void outputFunctionDef(ns::_functiondef f)
+{
+	cout << "def " << f.name << "(" << f.args << "):" << endl;
+	for (size_t i = 0; i < f.a.size(); i++)
+		outputAssign(f.a.at(i));
+
+	for (size_t i = 0; i < f.e.size(); i++)
+		cout << formatCall(f.e.at(i).call) << endl;
+}
+
 int main()
 {
-	cout << "rapid json test ";
-	ifstream infile("./file1.json");
+	ifstream infile("./file2.json");
 	if (!infile)
 	{
 		cout << "File not found!\n";
@@ -304,7 +372,7 @@ int main()
 		if (element.is_array()) {
 			for (size_t i = 0; i < element.size(); i++)
 			{
-				cout << "\n***ELEMENT: " << i << endl;
+				//cout << "\n[ELEMENT] " << i << endl;
 				for (json::iterator it = element.at(i).begin(); it != element.at(i).end(); ++it)
 				{
 					if (it.key() == "ast_type")
@@ -322,18 +390,8 @@ int main()
 						else if (it.value() == "FunctionDef")
 						{
 							//encompasses both Expr and Assignment
-							ns::functiondef f
-							{
-								element.at(i)["args"].get<json>(),
-								element.at(i)["ast_type"].get<string>(),
-								element.at(i)["body"].get<json>(),
-								element.at(i)["name"].get<string>()
-							};
-
-							cout << "args: " << f.args << endl;
-							cout << "ast_type: " << f.ast_type << endl;
-							cout << "body: " << f.body << endl;
-							cout << "name: " << f.name << endl;
+							ns::_functiondef _f = parseFunctionDef(element, i);
+							outputFunctionDef(_f);
 						}
 					}
 				}
